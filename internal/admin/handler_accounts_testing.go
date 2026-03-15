@@ -128,7 +128,7 @@ func (h *Handler) testAccount(ctx context.Context, acc config.Account, model, me
 	// 获取会话数量
 	sessionStats, sessionErr := h.DS.GetSessionCountForToken(ctx, token)
 	if sessionErr == nil && sessionStats != nil {
-		result["session_count"] = sessionStats.TotalCount
+		result["session_count"] = sessionStats.FirstPageCount
 	}
 
 	if strings.TrimSpace(message) == "" {
