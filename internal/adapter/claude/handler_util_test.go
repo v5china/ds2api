@@ -319,7 +319,8 @@ func TestBuildClaudeToolPromptSupportsOpenAIStyleFunctionTool(t *testing.T) {
 				"name":        "search",
 				"description": "Search via function tool",
 				"parameters": map[string]any{
-					"type": "object",
+					"type":     "object",
+					"required": []any{"q"},
 					"properties": map[string]any{
 						"q": map[string]any{"type": "string"},
 					},
@@ -334,8 +335,8 @@ func TestBuildClaudeToolPromptSupportsOpenAIStyleFunctionTool(t *testing.T) {
 	if !containsStr(prompt, "Search via function tool") {
 		t.Fatalf("expected OpenAI-style function tool description in prompt, got: %q", prompt)
 	}
-	if !containsStr(prompt, "\"q\"") {
-		t.Fatalf("expected parameters schema serialized in prompt, got: %q", prompt)
+	if !containsStr(prompt, "MUST INCLUDE: q") {
+		t.Fatalf("expected required-field summary in prompt, got: %q", prompt)
 	}
 }
 

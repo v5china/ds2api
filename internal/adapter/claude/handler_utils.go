@@ -90,8 +90,7 @@ func buildClaudeToolPrompt(tools []any) string {
 			continue
 		}
 		names = append(names, name)
-		schema, _ := json.Marshal(schemaObj)
-		toolSchemas = append(toolSchemas, fmt.Sprintf("Tool: %s\nDescription: %s\nParameters: %s", name, desc, schema))
+		toolSchemas = append(toolSchemas, util.FormatToolSchemaAttentionBlock(name, desc, schemaObj))
 	}
 	if len(toolSchemas) == 0 {
 		return ""

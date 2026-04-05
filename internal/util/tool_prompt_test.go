@@ -24,3 +24,28 @@ func TestBuildToolCallInstructions_ExecuteCommandUsesCommandExample(t *testing.T
 		t.Fatalf("expected command parameter example for execute_command, got: %s", out)
 	}
 }
+
+func TestFormatToolSchemaAttentionBlockPrioritizesRequiredFields(t *testing.T) {
+	schema := map[string]any{
+		"type": "object",
+		"required": []any{
+			"command",
+		},
+		"properties": map[string]any{
+			"command": map[string]any{"type": "string"},
+			"cwd":     map[string]any{"type": "string"},
+			"timeout": map[string]any{"type": "integer"},
+		},
+	}
+
+	out := FormatToolSchemaAttentionBlock("execute_command", "Run a command", schema)
+	if !strings.Contains(out, "Tool: execute_command") {
+		t.Fatalf("expected tool name in summary, got: %s", out)
+	}
+	if !strings.Contains(out, "MUST INCLUDE: command") {
+		t.Fatalf("expected required field summary, got: %s", out)
+	}
+	if !strings.Contains(out, "OPTIONAL: cwd, timeout") {
+		t.Fatalf("expected optional field summary, got: %s", out)
+	}
+}

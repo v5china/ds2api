@@ -34,7 +34,11 @@ func TestBuildOpenAIFinalPrompt_HandlerPathIncludesToolRoundtripSemantics(t *tes
 				"name":        "get_weather",
 				"description": "Get weather",
 				"parameters": map[string]any{
-					"type": "object",
+					"type":     "object",
+					"required": []any{"city"},
+					"properties": map[string]any{
+						"city": map[string]any{"type": "string"},
+					},
 				},
 			},
 		},
@@ -53,6 +57,9 @@ func TestBuildOpenAIFinalPrompt_HandlerPathIncludesToolRoundtripSemantics(t *tes
 	if !strings.Contains(finalPrompt, "<tool_name>get_weather</tool_name>") {
 		t.Fatalf("handler finalPrompt should include tool name history: %q", finalPrompt)
 	}
+	if !strings.Contains(finalPrompt, "MUST INCLUDE: city") {
+		t.Fatalf("handler finalPrompt should front-load required fields: %q", finalPrompt)
+	}
 }
 
 func TestBuildOpenAIFinalPrompt_VercelPreparePathKeepsFinalAnswerInstruction(t *testing.T) {
@@ -67,7 +74,11 @@ func TestBuildOpenAIFinalPrompt_VercelPreparePathKeepsFinalAnswerInstruction(t *
 				"name":        "search",
 				"description": "search docs",
 				"parameters": map[string]any{
-					"type": "object",
+					"type":     "object",
+					"required": []any{"query"},
+					"properties": map[string]any{
+						"query": map[string]any{"type": "string"},
+					},
 				},
 			},
 		},
@@ -82,6 +93,9 @@ func TestBuildOpenAIFinalPrompt_VercelPreparePathKeepsFinalAnswerInstruction(t *
 	}
 	if !strings.Contains(finalPrompt, "TOOL CALL FORMAT") {
 		t.Fatalf("vercel prepare finalPrompt missing xml format instruction: %q", finalPrompt)
+	}
+	if !strings.Contains(finalPrompt, "MUST INCLUDE: query") {
+		t.Fatalf("vercel prepare finalPrompt missing required-field summary: %q", finalPrompt)
 	}
 	if !strings.Contains(finalPrompt, "Do NOT wrap the XML in markdown code fences") {
 		t.Fatalf("vercel prepare finalPrompt missing no-fence xml instruction: %q", finalPrompt)

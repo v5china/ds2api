@@ -2,7 +2,6 @@ package openai
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
@@ -44,11 +43,7 @@ func injectToolPrompt(messages []map[string]any, tools []any, policy util.ToolCh
 			continue
 		}
 		names = append(names, name)
-		if desc == "" {
-			desc = "No description available"
-		}
-		b, _ := json.Marshal(schema)
-		toolSchemas = append(toolSchemas, fmt.Sprintf("Tool: %s\nDescription: %s\nParameters: %s", name, desc, string(b)))
+		toolSchemas = append(toolSchemas, util.FormatToolSchemaAttentionBlock(name, desc, schema))
 	}
 	if len(toolSchemas) == 0 {
 		return messages, names
