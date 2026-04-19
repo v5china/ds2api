@@ -273,7 +273,10 @@ func splitThinkingParts(parts []ContentPart) ([]ContentPart, bool) {
 			continue
 		}
 		if p.Type != "thinking" {
-			out = append(out, p)
+			cleaned := stripThinkTags(p.Text)
+			if cleaned != "" {
+				out = append(out, ContentPart{Text: cleaned, Type: p.Type})
+			}
 			continue
 		}
 		loc := thinkClosePattern.FindStringIndex(p.Text)
@@ -294,7 +297,8 @@ func splitThinkingParts(parts []ContentPart) ([]ContentPart, bool) {
 		}
 	}
 	if !thinkingDone {
-		return parts, false
+		// Return 'out' instead of 'parts' because text parts might have been cleaned via stripThinkTags
+		return out, false
 	}
 	return out, true
 }

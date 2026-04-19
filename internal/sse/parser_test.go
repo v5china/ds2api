@@ -149,3 +149,17 @@ func TestParseSSEChunkForContentAutoTransitionsState(t *testing.T) {
 		t.Fatalf("expected nextType2 to remain text, got %q", nextType2)
 	}
 }
+
+func TestParseSSEChunkForContentStripsLeakedThinkTagsFromText(t *testing.T) {
+	chunk := map[string]any{
+		"p": "response/content", // This makes the part type "text"
+		"v": "normal text <think>leaked</think> end",
+	}
+	parts, _, _ := ParseSSEChunkForContent(chunk, true, "text")
+	if len(parts) != 1 {
+		t.Fatalf("expected 1 part, got %d: %#v", len(parts), parts)
+	}
+	if parts[0].Type != "text" || parts[0].Text != "normal text leaked end" {
+		t.Fatalf("expected leaked think tag to be stripped, got %#v", parts[0])
+	}
+}
