@@ -8,6 +8,12 @@ const LIMIT_OPTIONS = [0, 10, 20, 50]
 const DISABLED_LIMIT = 0
 const MESSAGE_COLLAPSE_AT = 700
 const VIEW_MODE_KEY = 'ds2api_chat_history_view_mode'
+const HISTORY_WRAPPER_PREFIX = '[file content end]\n\n'
+const HISTORY_WRAPPER_SUFFIX = '\n[file name]: IGNORE\n[file content begin]'
+const BEGIN_SENTENCE_MARKER = '<｜begin▁of▁sentence｜>'
+const USER_MARKER = '<｜User｜>'
+const ASSISTANT_MARKER = '<｜Assistant｜>'
+const END_SENTENCE_MARKER = '<｜end▁of▁sentence｜>'
 
 function formatDateTime(value, lang) {
     if (!value) return '-'
@@ -105,14 +111,137 @@ function MergeModeIcon() {
     )
 }
 
-function RequestMessages({ item, t }) {
-    const messages = Array.isArray(item?.messages) && item.messages.length > 0
+function unwrapHistoryTranscript(historyText) {
+    const trimmed = String(historyText || '').trim()
+    if (!trimmed) return null
+
+    if (trimmed.startsWith(HISTORY_WRAPPER_PREFIX)) {
+        if (!trimmed.endsWith(HISTORY_WRAPPER_SUFFIX)) return null
+        return trimmed.slice(HISTORY_WRAPPER_PREFIX.length, trimmed.length - HISTORY_WRAPPER_SUFFIX.length).trim()
+    }
+
+    if (
+        trimmed.includes('[file content end]')
+        || trimmed.includes('[file name]: IGNORE')
+        || trimmed.includes('[file content begin]')
+    ) {
+        return null
+    }
+
+    return trimmed
+}
+
+function parseStrictHistoryMessages(historyText) {
+    const transcript = unwrapHistoryTranscript(historyText)
+    if (!transcript || !transcript.startsWith(BEGIN_SENTENCE_MARKER)) return null
+
+    let cursor = BEGIN_SENTENCE_MARKER.length
+    const parsed = []
+    let expectedRole = null
+    let trailingAssistantPromptOnly = false
+
+    while (cursor < transcript.length) {
+        if (expectedRole === null) {
+            if (transcript.startsWith(USER_MARKER, cursor)) {
+                expectedRole = 'user'
+            } else if (transcript.startsWith(ASSISTANT_MARKER, cursor)) {
+                expectedRole = 'assistant'
+            } else if (transcript.slice(cursor).trim() === '') {
+                break
+            } else {
+                return null
+            }
+        }
+
+        if (transcript.startsWith(USER_MARKER, cursor)) {
+            if (expectedRole !== 'user') return null
+            cursor += USER_MARKER.length
+            const nextAssistant = transcript.indexOf(ASSISTANT_MARKER, cursor)
+            const nextSentenceEnd = transcript.indexOf(END_SENTENCE_MARKER, cursor)
+            if (nextAssistant < 0) return null
+            if (nextSentenceEnd >= 0 && nextSentenceEnd < nextAssistant) {
+                const assistantStart = nextSentenceEnd + END_SENTENCE_MARKER.length
+                if (!transcript.startsWith(ASSISTANT_MARKER, assistantStart)) return null
+                parsed.push({
+                    role: 'user',
+                    content: transcript.slice(cursor, nextSentenceEnd),
+                })
+                cursor = assistantStart
+                expectedRole = 'assistant'
+                continue
+            }
+            parsed.push({
+                role: 'user',
+                content: transcript.slice(cursor, nextAssistant),
+            })
+            const assistantStart = nextAssistant + ASSISTANT_MARKER.length
+            if (transcript.slice(assistantStart).trim() === '') {
+                trailingAssistantPromptOnly = true
+                cursor = assistantStart
+                break
+            }
+            cursor = nextAssistant
+            expectedRole = 'assistant'
+            continue
+        }
+
+        if (transcript.startsWith(ASSISTANT_MARKER, cursor)) {
+            if (expectedRole !== 'assistant') return null
+            cursor += ASSISTANT_MARKER.length
+            const nextSentenceEnd = transcript.indexOf(END_SENTENCE_MARKER, cursor)
+            if (nextSentenceEnd < 0) return null
+            parsed.push({
+                role: 'assistant',
+                content: transcript.slice(cursor, nextSentenceEnd),
+            })
+            cursor = nextSentenceEnd + END_SENTENCE_MARKER.length
+            expectedRole = 'user'
+            continue
+        }
+
+        if (transcript.slice(cursor).trim() === '') break
+        return null
+    }
+
+    if (!parsed.length) {
+        return null
+    }
+
+    if (!trailingAssistantPromptOnly && parsed[parsed.length - 1]?.role !== 'assistant') {
+        return null
+    }
+
+    return parsed
+}
+
+function buildListModeMessages(item, t) {
+    const liveMessages = Array.isArray(item?.messages) && item.messages.length > 0
         ? item.messages
+        : [{ role: 'user', content: item?.user_input || t('chatHistory.emptyUserInput') }]
+    const historyMessages = parseStrictHistoryMessages(item?.history_text)
+
+    if (!historyMessages?.length) {
+        return { messages: liveMessages, historyMerged: false }
+    }
+
+    const insertAt = liveMessages.findIndex(message => {
+        const role = String(message?.role || '').trim().toLowerCase()
+        return role !== 'system' && role !== 'developer'
+    })
+    const mergedMessages = [...liveMessages]
+    mergedMessages.splice(insertAt < 0 ? mergedMessages.length : insertAt, 0, ...historyMessages)
+
+    return { messages: mergedMessages, historyMerged: true }
+}
+
+function RequestMessages({ item, t, messages }) {
+    const requestMessages = Array.isArray(messages) && messages.length > 0
+        ? messages
         : [{ role: 'user', content: item?.user_input || t('chatHistory.emptyUserInput') }]
 
     return (
         <div className="space-y-5 max-w-4xl mx-auto">
-            {messages.map((message, index) => {
+            {requestMessages.map((message, index) => {
                 const role = message.role || 'user'
                 const isUser = role === 'user'
                 const isAssistant = role === 'assistant'
@@ -121,7 +250,7 @@ function RequestMessages({ item, t }) {
                     ? t('chatHistory.role.user')
                     : (isAssistant ? t('chatHistory.role.assistant') : (isTool ? t('chatHistory.role.tool') : t('chatHistory.role.system')))
                 return (
-                    <div key={`${role}-${index}`} className="flex gap-4">
+                    <div key={`${role}-${index}`} className={clsx('flex gap-4', isUser && 'flex-row-reverse justify-start')}>
                         <div className={clsx(
                             'w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border border-border',
                             isUser
@@ -133,7 +262,7 @@ function RequestMessages({ item, t }) {
                                 : <Bot className="w-4 h-4 text-foreground" />}
                         </div>
                         <div className="max-w-[88%] lg:max-w-[78%] text-left">
-                            <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground mb-2 px-1">
+                            <div className={clsx('text-[11px] uppercase tracking-[0.12em] text-muted-foreground mb-2 px-1', isUser && 'text-right')}>
                                 {label}
                             </div>
                             <div className={clsx(
@@ -205,13 +334,15 @@ function HistoryTextView({ item, t }) {
 
 function DetailConversation({ selectedItem, t, viewMode, detailScrollRef, assistantStartRef, bottomButtonClassName }) {
     if (!selectedItem) return null
+    const listModeState = viewMode === 'list' ? buildListModeMessages(selectedItem, t) : null
+    const showHistoryAtTop = viewMode !== 'list' || !listModeState?.historyMerged
 
     return (
         <>
-            <HistoryTextView item={selectedItem} t={t} />
+            {showHistoryAtTop && <HistoryTextView item={selectedItem} t={t} />}
 
             {viewMode === 'list'
-                ? <RequestMessages item={selectedItem} t={t} />
+                ? <RequestMessages item={selectedItem} t={t} messages={listModeState?.messages} />
                 : <MergedPromptView item={selectedItem} t={t} />}
 
             <div ref={assistantStartRef} className="flex gap-4 max-w-4xl mx-auto">
@@ -410,12 +541,12 @@ export default function ChatHistoryContainer({ authFetch, onMessage }) {
     }, [])
 
     useEffect(() => {
-        if (!autoRefreshReady) return undefined
+        if (!autoRefreshReady || limit === DISABLED_LIMIT) return undefined
         const timer = window.setInterval(() => {
             loadList({ mode: 'silent', announceError: false })
         }, 5000)
         return () => window.clearInterval(timer)
-    }, [autoRefreshReady])
+    }, [autoRefreshReady, limit])
 
     useEffect(() => {
         if (!autoRefreshReady || !selectedId || selectedSummary?.status !== 'streaming') return undefined
@@ -494,7 +625,12 @@ export default function ChatHistoryContainer({ authFetch, onMessage }) {
             setLimit(resolvedLimit)
             listETagRef.current = ''
             syncItems(Array.isArray(data.items) ? data.items : [])
-            onMessage?.('success', t('chatHistory.limitUpdated', { limit: resolvedLimit === DISABLED_LIMIT ? t('chatHistory.off') : resolvedLimit }))
+            onMessage?.(
+                'success',
+                resolvedLimit === DISABLED_LIMIT
+                    ? t('chatHistory.disabledSuccess')
+                    : t('chatHistory.limitUpdated', { limit: resolvedLimit })
+            )
         } catch (error) {
             onMessage?.('error', error.message || t('chatHistory.updateLimitFailed'))
         } finally {
@@ -571,6 +707,12 @@ export default function ChatHistoryContainer({ authFetch, onMessage }) {
     const handleSelectItem = (itemId, event) => {
         if (isMobileView) {
             openMobileDetail(itemId, event)
+            return
+        }
+        if (itemId === selectedId) {
+            detailETagRef.current = ''
+            setSelectedDetail(null)
+            loadDetail(itemId, { announceError: false })
             return
         }
         setPendingJumpToAssistant(true)
