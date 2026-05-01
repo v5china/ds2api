@@ -258,6 +258,28 @@ test('vercel stream exhausts DeepSeek continue before synthetic retry', async ()
   assert.equal(fetchBodies.some((body) => String(body.prompt || '').includes('Previous reply had no visible output')), false);
 });
 
+test('vercel stream continues direct quasi_status incomplete before final tool call', async () => {
+  const { frames, fetchURLs } = await runMockVercelStreamSequence([
+    [
+      'data: {"response_message_id":7,"p":"response/content","v":"<tool_calls><invoke name=\\"write_file\\"><parameter name=\\"content\\"><![CDATA[part-one"}\n\n',
+      'data: {"p":"response/quasi_status","v":"INCOMPLETE"}\n\n',
+      'data: [DONE]\n\n',
+    ],
+    [
+      'data: {"response_message_id":8,"p":"response/content","v":"-part-two]]></parameter></invoke></tool_calls>"}\n\n',
+      'data: {"p":"response/status","v":"FINISHED"}\n\n',
+      'data: [DONE]\n\n',
+    ],
+  ], { tool_names: ['write_file'] });
+  const parsed = frames.filter((frame) => frame !== '[DONE]').map((frame) => JSON.parse(frame));
+  const toolDelta = parsed.find((item) => item.choices?.[0]?.delta?.tool_calls);
+  assert.equal(fetchURLs.filter((url) => url === 'https://chat.deepseek.com/api/v0/chat/continue').length, 1);
+  assert.ok(toolDelta);
+  const args = JSON.parse(toolDelta.choices[0].delta.tool_calls[0].function.arguments);
+  assert.equal(args.content, 'part-one-part-two');
+  assert.equal(parsed.at(-1).choices[0].finish_reason, 'tool_calls');
+});
+
 
 
 test('vercel stream usage completion_tokens does not double-count visible output', async () => {

@@ -516,32 +516,51 @@ function observeContinueState(state, chunk) {
   if (topID > 0) {
     state.responseMessageID = topID;
   }
-  if (chunk.p === 'response/status') {
-    setContinueStatus(state, asString(chunk.v));
-  }
+  observeContinueDirectPatch(state, chunk.p, chunk.v);
   if (chunk.p === 'response') {
     observeContinueBatchPatches(state, 'response', chunk.v);
   } else {
     observeContinueBatchPatches(state, '', chunk.v);
   }
   const response = chunk.v && typeof chunk.v === 'object' ? chunk.v.response : null;
-  if (response && typeof response === 'object') {
-    const id = numberValue(response.message_id);
-    if (id > 0) {
-      state.responseMessageID = id;
-    }
-    setContinueStatus(state, asString(response.status));
-    if (response.auto_continue === true) {
-      state.lastStatus = 'AUTO_CONTINUE';
-    }
-  }
+  observeContinueResponseObject(state, response);
   const messageResponse = chunk.message && typeof chunk.message === 'object' && chunk.message.response;
-  if (messageResponse && typeof messageResponse === 'object') {
-    const id = numberValue(messageResponse.message_id);
-    if (id > 0) {
-      state.responseMessageID = id;
-    }
-    setContinueStatus(state, asString(messageResponse.status));
+  observeContinueResponseObject(state, messageResponse);
+}
+
+function observeContinueDirectPatch(state, path, value) {
+  if (!state) {
+    return;
+  }
+  switch (asString(path).trim().replace(/^\/+|\/+$/g, '')) {
+    case 'response/status':
+    case 'status':
+    case 'response/quasi_status':
+    case 'quasi_status':
+      setContinueStatus(state, asString(value));
+      break;
+    case 'response/auto_continue':
+    case 'auto_continue':
+      if (value === true) {
+        state.lastStatus = 'AUTO_CONTINUE';
+      }
+      break;
+    default:
+      break;
+  }
+}
+
+function observeContinueResponseObject(state, response) {
+  if (!state || !response || typeof response !== 'object') {
+    return;
+  }
+  const id = numberValue(response.message_id);
+  if (id > 0) {
+    state.responseMessageID = id;
+  }
+  setContinueStatus(state, asString(response.status));
+  if (response.auto_continue === true) {
+    state.lastStatus = 'AUTO_CONTINUE';
   }
 }
 
@@ -568,6 +587,12 @@ function observeContinueBatchPatches(state, parentPath, raw) {
       case 'response/quasi_status':
       case 'quasi_status':
         setContinueStatus(state, asString(patch.v));
+        break;
+      case 'response/auto_continue':
+      case 'auto_continue':
+        if (patch.v === true) {
+          state.lastStatus = 'AUTO_CONTINUE';
+        }
         break;
       default:
         break;
