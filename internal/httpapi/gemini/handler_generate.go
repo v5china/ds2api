@@ -343,8 +343,17 @@ func buildGeminiGenerateContentResponseFromTurn(turn assistantturn.Turn) map[str
 }
 
 func buildGeminiPartsFromTurn(turn assistantturn.Turn) []map[string]any {
+	thinkingPart := func() []map[string]any {
+		if turn.Thinking == "" {
+			return nil
+		}
+		return []map[string]any{{"text": turn.Thinking, "thought": true}}
+	}
 	if len(turn.ToolCalls) > 0 {
-		parts := make([]map[string]any, 0, len(turn.ToolCalls))
+		parts := thinkingPart()
+		if parts == nil {
+			parts = make([]map[string]any, 0, len(turn.ToolCalls))
+		}
 		for _, tc := range turn.ToolCalls {
 			parts = append(parts, map[string]any{
 				"functionCall": map[string]any{
@@ -355,11 +364,14 @@ func buildGeminiPartsFromTurn(turn assistantturn.Turn) []map[string]any {
 		}
 		return parts
 	}
-	text := turn.Text
-	if text == "" {
-		text = turn.Thinking
+	parts := thinkingPart()
+	if turn.Text != "" {
+		parts = append(parts, map[string]any{"text": turn.Text})
 	}
-	return []map[string]any{{"text": text}}
+	if len(parts) == 0 {
+		parts = append(parts, map[string]any{"text": ""})
+	}
+	return parts
 }
 
 //nolint:unused // retained for native Gemini non-stream handling path.
@@ -380,8 +392,17 @@ func buildGeminiPartsFromFinal(finalText, finalThinking string, toolNames []stri
 	if len(detected) == 0 && finalThinking != "" {
 		detected = toolcall.ParseToolCalls(finalThinking, toolNames)
 	}
+	thinkingPart := func() []map[string]any {
+		if finalThinking == "" {
+			return nil
+		}
+		return []map[string]any{{"text": finalThinking, "thought": true}}
+	}
 	if len(detected) > 0 {
-		parts := make([]map[string]any, 0, len(detected))
+		parts := thinkingPart()
+		if parts == nil {
+			parts = make([]map[string]any, 0, len(detected))
+		}
 		for _, tc := range detected {
 			parts = append(parts, map[string]any{
 				"functionCall": map[string]any{
@@ -393,9 +414,12 @@ func buildGeminiPartsFromFinal(finalText, finalThinking string, toolNames []stri
 		return parts
 	}
 
-	text := finalText
-	if text == "" {
-		text = finalThinking
+	parts := thinkingPart()
+	if finalText != "" {
+		parts = append(parts, map[string]any{"text": finalText})
 	}
-	return []map[string]any{{"text": text}}
+	if len(parts) == 0 {
+		parts = append(parts, map[string]any{"text": ""})
+	}
+	return parts
 }

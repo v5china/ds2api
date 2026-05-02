@@ -134,6 +134,21 @@ func (s *geminiStreamRuntime) onParsed(parsed sse.LineResult) streamengine.Parse
 	accumulated := s.accumulator.Apply(parsed)
 	for _, p := range accumulated.Parts {
 		if p.Type == "thinking" {
+			if p.VisibleText == "" || s.bufferContent {
+				continue
+			}
+			s.sendChunk(map[string]any{
+				"candidates": []map[string]any{
+					{
+						"index": 0,
+						"content": map[string]any{
+							"role":  "model",
+							"parts": []map[string]any{{"text": p.VisibleText, "thought": true}},
+						},
+					},
+				},
+				"modelVersion": s.model,
+			})
 			continue
 		}
 		if p.RawText == "" || p.CitationOnly || p.VisibleText == "" {

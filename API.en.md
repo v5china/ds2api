@@ -555,7 +555,7 @@ data: {"type":"message_stop"}
 
 **Notes**:
 
-- Models whose names contain `opus` / `reasoner` / `slow` stream `thinking_delta`
+- Models that support thinking emit `thinking` blocks / `thinking_delta` by default; explicit thinking disablement or `-nothinking` models suppress them
 - `signature_delta` is not emitted (DeepSeek does not provide verifiable thinking signatures)
 - In `tools` mode, the stream avoids leaking raw tool JSON and does not force `input_json_delta`
 
@@ -601,6 +601,7 @@ Request body accepts Gemini-style `contents` / `tools`. Model names can use alia
 Response uses Gemini-compatible fields, including:
 
 - `candidates[].content.parts[].text`
+- `candidates[].content.parts[].thought=true` for thinking output
 - `candidates[].content.parts[].functionCall` (when tool call is produced)
 - `usageMetadata` (`promptTokenCount` / `candidatesTokenCount` / `totalTokenCount`)
 
@@ -609,6 +610,7 @@ Response uses Gemini-compatible fields, including:
 Returns SSE (`text/event-stream`), each chunk as `data: <json>`:
 
 - regular text: incremental text chunks
+- thinking: incremental chunks with `parts[].thought=true`
 - `tools` mode: buffered and emitted as `functionCall` at finalize phase
 - final chunk: includes `finishReason: "STOP"` and `usageMetadata`
 - Token counting prefers pass-through from upstream DeepSeek SSE (`accumulated_token_usage` / `token_usage`), and only falls back to local estimation when upstream usage is absent

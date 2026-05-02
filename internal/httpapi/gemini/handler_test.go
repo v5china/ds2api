@@ -257,6 +257,56 @@ func TestStreamGenerateContentEmitsSSE(t *testing.T) {
 	}
 }
 
+func TestNativeStreamGenerateContentEmitsThoughtParts(t *testing.T) {
+	h := &Handler{}
+	resp := makeGeminiUpstreamResponse(
+		`data: {"p":"response/thinking_content","v":"think"}`,
+		`data: {"p":"response/content","v":"answer"}`,
+		`data: [DONE]`,
+	)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-2.5-pro:streamGenerateContent", nil)
+
+	h.handleStreamGenerateContent(rec, req, resp, "gemini-2.5-pro", "prompt", true, false, nil, nil)
+
+	frames := extractGeminiSSEFrames(t, rec.Body.String())
+	if len(frames) < 2 {
+		t.Fatalf("expected thought and text stream frames, body=%s", rec.Body.String())
+	}
+	var gotThought, gotText string
+	for _, frame := range frames {
+		for _, part := range geminiPartsFromFrame(frame) {
+			if part["thought"] == true {
+				gotThought += asString(part["text"])
+			} else {
+				gotText += asString(part["text"])
+			}
+		}
+	}
+	if gotThought != "think" {
+		t.Fatalf("expected thought part, got %q body=%s", gotThought, rec.Body.String())
+	}
+	if !strings.Contains(gotText, "answer") {
+		t.Fatalf("expected text part answer, got %q body=%s", gotText, rec.Body.String())
+	}
+}
+
+func TestBuildGeminiPartsFromFinalIncludesThoughtPart(t *testing.T) {
+	parts := buildGeminiPartsFromFinal("answer", "think", nil)
+	if len(parts) != 2 {
+		t.Fatalf("expected thought + answer parts, got %#v", parts)
+	}
+	if parts[0]["thought"] != true || parts[0]["text"] != "think" {
+		t.Fatalf("expected first part to be thought, got %#v", parts[0])
+	}
+	if _, ok := parts[1]["thought"]; ok {
+		t.Fatalf("expected second part to be visible text, got %#v", parts[1])
+	}
+	if parts[1]["text"] != "answer" {
+		t.Fatalf("expected answer text, got %#v", parts[1])
+	}
+}
+
 func TestGeminiProxyTranslatesInlineImageToOpenAIDataURL(t *testing.T) {
 	openAI := &geminiOpenAISuccessStub{}
 	h := &Handler{Store: testGeminiConfig{}, OpenAI: openAI}
@@ -395,4 +445,22 @@ func extractGeminiSSEFrames(t *testing.T, body string) []map[string]any {
 		out = append(out, frame)
 	}
 	return out
+}
+
+func geminiPartsFromFrame(frame map[string]any) []map[string]any {
+	candidates, _ := frame["candidates"].([]any)
+	if len(candidates) == 0 {
+		return nil
+	}
+	c0, _ := candidates[0].(map[string]any)
+	content, _ := c0["content"].(map[string]any)
+	rawParts, _ := content["parts"].([]any)
+	parts := make([]map[string]any, 0, len(rawParts))
+	for _, raw := range rawParts {
+		part, _ := raw.(map[string]any)
+		if part != nil {
+			parts = append(parts, part)
+		}
+	}
+	return parts
 }

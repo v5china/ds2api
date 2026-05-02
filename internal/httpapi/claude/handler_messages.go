@@ -67,17 +67,12 @@ func (h *Handler) handleClaudeDirect(w http.ResponseWriter, r *http.Request) boo
 		writeClaudeError(w, http.StatusBadRequest, "invalid json")
 		return true
 	}
-	exposeThinking := false
-	if enabled, ok := util.ResolveThinkingOverride(req); ok && enabled {
-		exposeThinking = true
-	} else if _, ok := util.ResolveThinkingOverride(req); !ok && !util.ToBool(req["stream"]) {
-		req["thinking"] = map[string]any{"type": "enabled"}
-	}
 	norm, err := normalizeClaudeRequest(h.Store, req)
 	if err != nil {
 		writeClaudeError(w, http.StatusBadRequest, err.Error())
 		return true
 	}
+	exposeThinking := norm.Standard.Thinking
 	a, err := h.Auth.Determine(r)
 	if err != nil {
 		writeClaudeError(w, http.StatusUnauthorized, err.Error())
@@ -140,7 +135,7 @@ func (h *Handler) proxyViaOpenAI(w http.ResponseWriter, r *http.Request, store C
 		}
 	}
 	translatedReq := translatorcliproxy.ToOpenAI(sdktranslator.FormatClaude, translateModel, raw, stream)
-	translatedReq, exposeThinking := applyClaudeThinkingPolicyToOpenAIRequest(translatedReq, req, stream)
+	translatedReq, exposeThinking := applyClaudeThinkingPolicyToOpenAIRequest(translatedReq, req)
 
 	isVercelPrepare := strings.TrimSpace(r.URL.Query().Get("__stream_prepare")) == "1"
 	isVercelRelease := strings.TrimSpace(r.URL.Query().Get("__stream_release")) == "1"
@@ -215,7 +210,7 @@ func (h *Handler) proxyViaOpenAI(w http.ResponseWriter, r *http.Request, store C
 	return true
 }
 
-func applyClaudeThinkingPolicyToOpenAIRequest(translated []byte, original map[string]any, stream bool) ([]byte, bool) {
+func applyClaudeThinkingPolicyToOpenAIRequest(translated []byte, original map[string]any) ([]byte, bool) {
 	req := map[string]any{}
 	if err := json.Unmarshal(translated, &req); err != nil {
 		return translated, false
@@ -225,7 +220,7 @@ func applyClaudeThinkingPolicyToOpenAIRequest(translated []byte, original map[st
 		if _, translatedHasOverride := util.ResolveThinkingOverride(req); translatedHasOverride {
 			return translated, false
 		}
-		enabled = !stream
+		enabled = true
 	}
 	typ := "disabled"
 	if enabled {
@@ -234,9 +229,9 @@ func applyClaudeThinkingPolicyToOpenAIRequest(translated []byte, original map[st
 	req["thinking"] = map[string]any{"type": typ}
 	out, err := json.Marshal(req)
 	if err != nil {
-		return translated, ok && enabled
+		return translated, enabled
 	}
-	return out, ok && enabled
+	return out, enabled
 }
 
 func stripClaudeThinkingBlocks(raw []byte) []byte {

@@ -561,7 +561,7 @@ data: {"type":"message_stop"}
 
 **说明**：
 
-- 默认模型会按各 surface 的既有规则输出 thinking / reasoning 相关增量
+- 默认支持 thinking 的模型会输出 `thinking` block / `thinking_delta`；请求显式关闭 thinking 或使用 `-nothinking` 模型时不会输出
 - 带 `-nothinking` 后缀的模型会强制关闭 thinking，即使请求显式传了 `thinking` / `reasoning` / `reasoning_effort` 也不会输出 `thinking_delta`
 - 不会输出 `signature_delta`（上游 DeepSeek 未提供可验证签名）
 - `tools` 场景优先避免泄露原始工具 JSON，不强制发送 `input_json_delta`
@@ -608,6 +608,7 @@ data: {"type":"message_stop"}
 响应为 Gemini 兼容结构，核心字段包括：
 
 - `candidates[].content.parts[].text`
+- `candidates[].content.parts[].thought=true`（thinking 输出）
 - `candidates[].content.parts[].functionCall`（工具调用时）
 - `usageMetadata`（`promptTokenCount` / `candidatesTokenCount` / `totalTokenCount`）
 
@@ -616,6 +617,7 @@ data: {"type":"message_stop"}
 返回 SSE（`text/event-stream`），每个 chunk 为一条 `data: <json>`：
 
 - 常规文本：持续返回增量文本 chunk
+- thinking：持续返回 `parts[].thought=true` 的增量 chunk
 - `tools` 场景：会缓冲并在结束时输出 `functionCall` 结构
 - 结束 chunk：包含 `finishReason: "STOP"` 与 `usageMetadata`
 - token 计数优先透传上游 DeepSeek SSE（如 `accumulated_token_usage` / `token_usage`）；仅在上游缺失时回退本地估算
