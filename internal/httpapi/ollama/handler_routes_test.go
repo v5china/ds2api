@@ -4,29 +4,19 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-
+	"strings"
 	"github.com/go-chi/chi/v5"
 )
 
 type ollamaTestSurface struct {
-	Store       shared.ConfigReader
+	Store       ConfigReader
 	handler     *Handler
 }
 
-GetVersion(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(`{"version":"0.23.1"}`))	
-}
-func (h *Handler) ListOllamaModels(w http.ResponseWriter, r *http.Request) {
-	WriteJSON(w, http.StatusOK, config.OllamaModelsResponse())
-}
-func (h *Handler) GetOllamaModel
-
 func registerOllamaTestRoutes(r chi.Router, h *ollamaTestSurface) {
 	r.Get("/api/version", h.handler().GetVersion)
-	r.Get("/api/tags", h.modelsHandler().ListOllamaModels)
-	r.Post("/api/show", h.chatHandler().GetOllamaModel)
+	r.Get("/api/tags", h.handler().ListOllamaModels)
+	r.Post("/api/show", h.handler().GetOllamaModel)
 }
 
 
